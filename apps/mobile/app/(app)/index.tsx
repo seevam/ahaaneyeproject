@@ -4,8 +4,8 @@ import { Link } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { apiClient } from '@/services/api-client';
-import { usePatientStore } from '@/stores/patient-store';
 import { useAuthStore } from '@/stores/auth-store';
+import { usePatientStore } from '@/stores/patient-store';
 import type { ReminderInstance, ReminderSchedule, ApiResponse } from '@eyecare/shared';
 
 type InstanceWithSchedule = ReminderInstance & {
@@ -14,12 +14,12 @@ type InstanceWithSchedule = ReminderInstance & {
 
 export default function TodayScreen() {
   const today = format(new Date(), 'yyyy-MM-dd');
-  const { isAuthenticated } = useAuthStore();
+  const token = useAuthStore((s) => s.token);
   const { activePatientId, fetchPatients, patients } = usePatientStore();
 
   useEffect(() => {
-    if (isAuthenticated) fetchPatients();
-  }, [isAuthenticated, fetchPatients]);
+    if (token) fetchPatients();
+  }, [token, fetchPatients]);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['todayInstances', activePatientId, today],
@@ -60,6 +60,16 @@ export default function TodayScreen() {
 
   return (
     <View className="flex-1 bg-gray-50">
+      {/* ── Punchline banner ──────────────────────────────────────────────── */}
+      <View className="bg-primary-500 px-6 pt-5 pb-4">
+        <Text className="text-white text-xs font-semibold tracking-widest uppercase opacity-80">
+          Our mission
+        </Text>
+        <Text className="text-white text-xl font-bold mt-1">
+          Impact an Eye Every Day 👁️
+        </Text>
+      </View>
+
       <View className="px-6 pt-4 pb-2">
         <Text className="text-2xl font-bold text-gray-900">Today&apos;s Schedule</Text>
         <Text className="text-sm text-gray-500 mt-1">

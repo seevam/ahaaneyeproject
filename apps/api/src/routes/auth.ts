@@ -1,162 +1,109 @@
 import { Router, Request, Response } from 'express';
-import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import crypto from 'crypto';
-import { eq, or } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../config/database';
-import { env } from '../config/env';
-import { users, refreshTokens } from '../db/schema';
-import { validate } from '../middleware/validate';
+import { users } from '../db/schema';
 import { authenticate } from '../middleware/auth';
-import { signupSchema, loginSchema, refreshTokenSchema } from '@eyecare/shared';
+import { env } from '../config/env';
 
 const router = Router();
 
-function generateTokens(userId: string, role: string) {
-  const accessToken = jwt.sign({ userId, role }, env.jwt.secret, {
-    expiresIn: env.jwt.accessExpiresIn,
-  });
-  const refreshToken = crypto.randomBytes(64).toString('hex');
-  return { accessToken, refreshToken, expiresIn: 900 }; // 15 min
+function signToken(userId: string): string {
+  return jwt.sign({ sub: userId }, env.jwtSecret, { expiresIn: env.jwtExpiresIn });
 }
 
-// POST /auth/signup
-router.post('/signup', validate(signupSchema), async (req: Request, res: Response) => {
+/**
+ * POST /auth/register
+ * Body: { name: string, phone: string }
+ * Creates a new user (or returns the existing one for the phone number)
+ * and returns a JWT.
+ */
+router.post('/register', async (req: Request, res: Response) => {
+  const { name, phone } = req.body as { name?: string; phone?: string };
+
+  if (!name?.trim()) {
+    res.status(400).json({ error: 'Bad Request', message: 'Name is required', statusCode: 400 });
+    return;
+  }
+  if (!phone?.trim()) {
+    res.status(400).json({ error: 'Bad Request', message: 'Phone number is required', statusCode: 400 });
+    return;
+  }
+
   try {
-    const { name, email, phone, password, preferredLanguage, timezone } = req.body;
-
-    // Check existing user
-    if (email) {
-      const existing = await db.query.users.findFirst({ where: eq(users.email, email) });
-      if (existing) {
-        res.status(409).json({ error: 'Conflict', message: 'Email already registered', statusCode: 409 });
-        return;
-      }
-    }
-    if (phone) {
-      const existing = await db.query.users.findFirst({ where: eq(users.phone, phone) });
-      if (existing) {
-        res.status(409).json({ error: 'Conflict', message: 'Phone already registered', statusCode: 409 });
-        return;
-      }
-    }
-
-    const passwordHash = await bcrypt.hash(password, 12);
-
-    const [user] = await db.insert(users).values({
-      name,
-      email: email || null,
-      phone: phone || null,
-      passwordHash,
-      preferredLanguage,
-      timezone,
-    }).returning({
-      id: users.id,
-      name: users.name,
-      email: users.email,
-      phone: users.phone,
-      role: users.role,
-      preferredLanguage: users.preferredLanguage,
-      timezone: users.timezone,
+    // If a user with this phone already exists, return their token (idempotent)
+    const existing = await db.query.users.findFirst({
+      where: eq(users.phone, phone.trim()),
     });
 
-    const tokens = generateTokens(user.id, user.role);
-    const tokenHash = crypto.createHash('sha256').update(tokens.refreshToken).digest('hex');
+    if (existing) {
+      const token = signToken(existing.id);
+      res.json({ data: { token, user: existing } });
+      return;
+    }
 
-    await db.insert(refreshTokens).values({
-      userId: user.id,
-      tokenHash,
-      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-    });
+    const [user] = await db
+      .insert(users)
+      .values({ name: name.trim(), phone: phone.trim() })
+      .returning();
 
-    res.status(201).json({ data: { user, ...tokens } });
+    const token = signToken(user.id);
+    res.status(201).json({ data: { token, user } });
   } catch (err) {
-    res.status(500).json({ error: 'Internal Server Error', message: 'Failed to create account', statusCode: 500 });
+    console.error('Register error:', err);
+    res.status(500).json({ error: 'Internal Server Error', message: 'Registration failed', statusCode: 500 });
   }
 });
 
-// POST /auth/login
-router.post('/login', validate(loginSchema), async (req: Request, res: Response) => {
-  try {
-    const { identifier, password } = req.body;
+/**
+ * POST /auth/login
+ * Body: { phone: string }
+ * Returns a JWT for the user with that phone number, or 404 if not found.
+ */
+router.post('/login', async (req: Request, res: Response) => {
+  const { phone } = req.body as { phone?: string };
 
+  if (!phone?.trim()) {
+    res.status(400).json({ error: 'Bad Request', message: 'Phone number is required', statusCode: 400 });
+    return;
+  }
+
+  try {
     const user = await db.query.users.findFirst({
-      where: or(eq(users.email, identifier), eq(users.phone, identifier)),
+      where: eq(users.phone, phone.trim()),
     });
 
     if (!user) {
-      res.status(401).json({ error: 'Unauthorized', message: 'Invalid credentials', statusCode: 401 });
+      res.status(404).json({ error: 'Not Found', message: 'No account found for this phone number', statusCode: 404 });
       return;
     }
 
-    const valid = await bcrypt.compare(password, user.passwordHash);
-    if (!valid) {
-      res.status(401).json({ error: 'Unauthorized', message: 'Invalid credentials', statusCode: 401 });
-      return;
-    }
-
-    const tokens = generateTokens(user.id, user.role);
-    const tokenHash = crypto.createHash('sha256').update(tokens.refreshToken).digest('hex');
-
-    await db.insert(refreshTokens).values({
-      userId: user.id,
-      tokenHash,
-      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-    });
-
-    const { passwordHash: _, ...safeUser } = user;
-    res.json({ data: { user: safeUser, ...tokens } });
+    const token = signToken(user.id);
+    res.json({ data: { token, user } });
   } catch (err) {
+    console.error('Login error:', err);
     res.status(500).json({ error: 'Internal Server Error', message: 'Login failed', statusCode: 500 });
   }
 });
 
-// POST /auth/refresh
-router.post('/refresh', validate(refreshTokenSchema), async (req: Request, res: Response) => {
+/**
+ * GET /auth/me
+ * Returns the current user's profile.
+ */
+router.get('/me', authenticate, async (req: Request, res: Response) => {
   try {
-    const { refreshToken: token } = req.body;
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-
-    const stored = await db.query.refreshTokens.findFirst({
-      where: eq(refreshTokens.tokenHash, tokenHash),
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, req.user!.userId),
     });
 
-    if (!stored || stored.expiresAt < new Date()) {
-      res.status(401).json({ error: 'Unauthorized', message: 'Invalid or expired refresh token', statusCode: 401 });
-      return;
-    }
-
-    // Rotate: delete old, create new
-    await db.delete(refreshTokens).where(eq(refreshTokens.id, stored.id));
-
-    const user = await db.query.users.findFirst({ where: eq(users.id, stored.userId) });
     if (!user) {
-      res.status(401).json({ error: 'Unauthorized', message: 'User not found', statusCode: 401 });
+      res.status(404).json({ error: 'Not Found', message: 'User not found', statusCode: 404 });
       return;
     }
 
-    const tokens = generateTokens(user.id, user.role);
-    const newHash = crypto.createHash('sha256').update(tokens.refreshToken).digest('hex');
-
-    await db.insert(refreshTokens).values({
-      userId: user.id,
-      tokenHash: newHash,
-      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-    });
-
-    res.json({ data: tokens });
-  } catch (err) {
-    res.status(500).json({ error: 'Internal Server Error', message: 'Token refresh failed', statusCode: 500 });
-  }
-});
-
-// DELETE /auth/logout
-router.delete('/logout', authenticate, async (req: Request, res: Response) => {
-  try {
-    await db.delete(refreshTokens).where(eq(refreshTokens.userId, req.user!.userId));
-    res.json({ data: { message: 'Logged out successfully' } });
-  } catch (err) {
-    res.status(500).json({ error: 'Internal Server Error', message: 'Logout failed', statusCode: 500 });
+    res.json({ data: user });
+  } catch {
+    res.status(500).json({ error: 'Internal Server Error', message: 'Failed to fetch user', statusCode: 500 });
   }
 });
 

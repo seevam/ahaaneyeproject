@@ -34,22 +34,23 @@ export const storyVisibilityEnum = pgEnum('story_visibility', ['draft', 'schedul
 export const devicePlatformEnum = pgEnum('device_platform', ['ios', 'android']);
 
 // Users
+// Identity (email, password, sessions) is fully owned by Clerk.
+// This table stores only app-specific profile data, keyed by Clerk user ID.
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
+  clerkId: varchar('clerk_id', { length: 255 }).unique(), // nullable — only set for legacy Clerk accounts
   email: varchar('email', { length: 255 }).unique(),
   phone: varchar('phone', { length: 50 }).unique(),
-  passwordHash: varchar('password_hash', { length: 255 }).notNull(),
-  name: varchar('name', { length: 255 }).notNull(),
+  name: varchar('name', { length: 255 }).notNull().default(''),
   role: userRoleEnum('role').notNull().default('user'),
   preferredLanguage: varchar('preferred_language', { length: 10 }).notNull().default('en'),
   timezone: varchar('timezone', { length: 100 }).notNull().default('UTC'),
   notificationSettings: jsonb('notification_settings').notNull().default({}),
-  isGuest: boolean('is_guest').notNull().default(false),
-  emailVerified: boolean('email_verified').notNull().default(false),
-  phoneVerified: boolean('phone_verified').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  index('idx_users_clerk_id').on(table.clerkId),
+]);
 
 // Patient Profiles
 export const patientProfiles = pgTable('patient_profiles', {
@@ -258,24 +259,11 @@ export const devices = pgTable('devices', {
   uniqueIndex('idx_devices_push_token').on(table.pushToken),
 ]);
 
-// Refresh Tokens
-export const refreshTokens = pgTable('refresh_tokens', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  tokenHash: varchar('token_hash', { length: 255 }).notNull(),
-  deviceId: uuid('device_id').references(() => devices.id),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => [
-  index('idx_refresh_tokens_user').on(table.userId),
-]);
-
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   patientProfiles: many(patientProfiles),
   devices: many(devices),
   donations: many(donations),
-  refreshTokens: many(refreshTokens),
 }));
 
 export const patientProfilesRelations = relations(patientProfiles, ({ one, many }) => ({

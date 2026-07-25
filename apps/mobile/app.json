@@ -2,7 +2,8 @@
   "expo": {
     "name": "Impact an Eye Every Day",
     "slug": "eyecare",
-    "version": "0.1.0",
+    "version": "0.2.0",
+    "sdkVersion": "54.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "eyecare",
@@ -36,16 +37,9 @@
       ]
     },
     "plugins": [
-      "expo-router",
       "expo-secure-store",
       "expo-localization",
-      [
-        "expo-notifications",
-        {
-          "sounds": ["./assets/sounds/alarm-default.wav"]
-        }
-      ],
-      "@notifee/react-native"
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true

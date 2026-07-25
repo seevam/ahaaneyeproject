@@ -7,6 +7,8 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  Modal,
+  FlatList,
 } from 'react-native';
 import { router } from 'expo-router';
 import { format } from 'date-fns';
@@ -15,6 +17,17 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/services/api-client';
 import { usePatientStore } from '@/stores/patient-store';
 import type { SchedulingMode, SchedulingParams, ApiResponse } from '@eyecare/shared';
+
+// ── Dosage instruction presets ────────────────────────────────────────────────
+const DOSAGE_OPTIONS = [
+  '1 drop in left eye',
+  '1 drop in right eye',
+  '1 drop in both eyes',
+  '2 drops in left eye',
+  '2 drops in right eye',
+  '2 drops in both eyes',
+  '1 drop in affected eye',
+];
 
 const SCHEDULING_MODES: { value: SchedulingMode; label: string; description: string }[] = [
   {
@@ -29,8 +42,8 @@ const SCHEDULING_MODES: { value: SchedulingMode; label: string; description: str
   },
   {
     value: 'count_based',
-    label: 'Count-Based',
-    description: 'X doses separated by Y minutes, starting at Z',
+    label: 'Count-Based (Eyedrops)',
+    description: 'X drops, 5 min apart — the clinical standard for multiple eyedrops',
   },
 ];
 
@@ -39,6 +52,7 @@ export default function CreateReminderScreen() {
   const activePatient = usePatientStore((s) => s.activePatient());
   const [medicationName, setMedicationName] = useState('');
   const [dosageText, setDosageText] = useState('');
+  const [dosagePickerOpen, setDosagePickerOpen] = useState(false);
   const [mode, setMode] = useState<SchedulingMode>('fixed_interval');
 
   // Fixed interval state
@@ -49,9 +63,9 @@ export default function CreateReminderScreen() {
   // Specific times state
   const [times, setTimes] = useState<string[]>(['08:00', '12:00', '18:00']);
 
-  // Count-based state
-  const [count, setCount] = useState('5');
-  const [gapMinutes, setGapMinutes] = useState('10');
+  // Count-based state — default gap is 5 min (clinical standard for eyedrops)
+  const [count, setCount] = useState('2');
+  const [gapMinutes, setGapMinutes] = useState('5');
   const [countStartTime, setCountStartTime] = useState('09:00');
 
   const timezone = Localization.getCalendars()[0]?.timeZone || 'UTC';
@@ -149,15 +163,57 @@ export default function CreateReminderScreen() {
         accessibilityLabel="Medication name"
       />
 
-      {/* Dosage */}
+      {/* Dosage — dropdown picker */}
       <Text className="text-sm font-medium text-gray-700 mb-2">Dosage Instructions</Text>
-      <TextInput
-        className="border border-gray-300 rounded-xl px-4 py-4 text-base mb-6"
-        placeholder="e.g. 1 drop in each eye"
-        value={dosageText}
-        onChangeText={setDosageText}
-        accessibilityLabel="Dosage instructions"
-      />
+      <TouchableOpacity
+        className="border border-gray-300 rounded-xl px-4 py-4 mb-6 flex-row justify-between items-center min-h-[56px]"
+        onPress={() => setDosagePickerOpen(true)}
+        accessibilityLabel="Select dosage instructions"
+        accessibilityRole="button"
+      >
+        <Text className={dosageText ? 'text-base text-gray-900' : 'text-base text-gray-400'}>
+          {dosageText || 'e.g. 1 drop in both eyes'}
+        </Text>
+        <Text className="text-gray-400 text-lg">▾</Text>
+      </TouchableOpacity>
+
+      {/* Dosage picker modal */}
+      <Modal
+        visible={dosagePickerOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setDosagePickerOpen(false)}
+      >
+        <TouchableOpacity
+          className="flex-1 bg-black/40"
+          activeOpacity={1}
+          onPress={() => setDosagePickerOpen(false)}
+        />
+        <View className="bg-white rounded-t-2xl px-6 pt-4 pb-10">
+          <Text className="text-lg font-bold text-gray-900 mb-4">Select Dosage</Text>
+          <FlatList
+            data={DOSAGE_OPTIONS}
+            keyExtractor={(item) => item}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                className={`py-4 border-b border-gray-100 flex-row justify-between items-center min-h-[52px] ${
+                  dosageText === item ? 'opacity-100' : 'opacity-80'
+                }`}
+                onPress={() => {
+                  setDosageText(item);
+                  setDosagePickerOpen(false);
+                }}
+                accessibilityLabel={item}
+                accessibilityRole="menuitem"
+                accessibilityState={{ selected: dosageText === item }}
+              >
+                <Text className="text-base text-gray-800">{item}</Text>
+                {dosageText === item && <Text className="text-primary-500 font-bold">✓</Text>}
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      </Modal>
 
       {/* Schedule Mode */}
       <Text className="text-sm font-medium text-gray-700 mb-3">Schedule Type</Text>
