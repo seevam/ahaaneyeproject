@@ -6,14 +6,13 @@ export default function AuthLayout() {
   const isGuest = useAuthStore((s) => s.isGuest);
 
   if (token) return <Redirect href="/(app)" />;
-  if (isGuest) return <Redirect href="/(app)/stories" />;
+  if (isGuest) return <Redirect href="/(app)" />;
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="login" />
       <Stack.Screen name="signup" />
-      <Stack.Screen name="forgot-password" />
     </Stack>
   );
 }

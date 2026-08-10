@@ -41,8 +41,8 @@ export default function OnboardingScreen() {
   };
 
   const handleStep3 = async () => {
-    const { status } = await Notifications.requestPermissionsAsync();
-    if (status !== 'granted') {
+    const permission = await Notifications.requestPermissionsAsync();
+    if (!permission.granted) {
       Alert.alert(
         'Notifications Recommended',
         'Without notifications, you won\'t receive medication reminders when the app is closed. You can enable them later in Settings.',

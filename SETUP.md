@@ -253,6 +253,28 @@ docker compose logs postgres
 docker compose logs redis
 ```
 
+### No Docker? Homebrew alternative (macOS)
+
+If you can't or don't want to install Docker, install PostgreSQL and Redis directly:
+
+```bash
+brew install postgresql@16 redis
+brew services start postgresql@16
+brew services start redis
+
+# Create the app user and database (Homebrew postgres runs on port 5432)
+psql -h localhost -p 5432 -d postgres -c "CREATE ROLE eyecare LOGIN PASSWORD 'eyecare' CREATEDB;"
+createdb -h localhost -p 5432 -O eyecare eyecare
+```
+
+Then edit `apps/api/.env` and change the port from **5433** to **5432**:
+
+```env
+DATABASE_URL=postgresql://eyecare:eyecare@localhost:5432/eyecare
+```
+
+Continue from step 6 as normal.
+
 ---
 
 ## 6. Push the database schema

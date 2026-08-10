@@ -145,7 +145,7 @@ export const reminderSchedules = pgTable('reminder_schedules', {
 export const reminderInstances = pgTable('reminder_instances', {
   id: uuid('id').primaryKey().defaultRandom(),
   scheduleId: uuid('schedule_id').notNull().references(() => reminderSchedules.id, { onDelete: 'cascade' }),
-  patientId: uuid('patient_id').notNull().references(() => patientProfiles.id),
+  patientId: uuid('patient_id').notNull().references(() => patientProfiles.id, { onDelete: 'cascade' }),
   scheduledTime: timestamp('scheduled_time', { withTimezone: true }).notNull(),
   actualTime: timestamp('actual_time', { withTimezone: true }),
   status: reminderStatusEnum('status').notNull().default('scheduled'),
